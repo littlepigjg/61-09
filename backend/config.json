@@ -1,6 +1,6 @@
 {
-  "port": 3000,
-  "wsPort": 3001,
+  "port": 3002,
+  "wsPort": 3003,
   "musicBaseDir": "./music",
   "channels": [
     {

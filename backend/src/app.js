@@ -7,6 +7,7 @@ const config = require('../config.json');
 const ChannelManager = require('./channel-manager');
 const AudioStreamer = require('./audio-streamer');
 const WebSocketServer = require('./ws-server');
+const MixerManager = require('./mixer-manager');
 
 let ffmpegAvailable = false;
 try {
@@ -63,15 +64,140 @@ channelManager.init();
 
 const audioStreamer = new AudioStreamer(channelManager);
 
-const wsServer = new WebSocketServer(config.wsPort, channelManager, ffmpegAvailable);
+const mixerManager = new MixerManager(channelManager, audioStreamer, config);
+
+const wsServer = new WebSocketServer(config.wsPort, channelManager, ffmpegAvailable, mixerManager);
 wsServer.start();
 
 app.get('/api/channels', (req, res) => {
-  const channels = channelManager.getAllChannels();
+  const channels = mixerManager.getAllChannelsWithVirtual();
   res.json(channels);
 });
 
+app.get('/api/mixers', (req, res) => {
+  const mixers = mixerManager.getAllMixers();
+  res.json(mixers);
+});
+
+app.get('/api/mixers/:mixerId', (req, res) => {
+  const mixer = mixerManager.getMixer(req.params.mixerId);
+  if (!mixer) {
+    return res.status(404).json({ error: 'Mixer not found' });
+  }
+  res.json(mixer.toJSON());
+});
+
+app.post('/api/mixers/:mixerId/start', (req, res) => {
+  const result = mixerManager.startMixing(req.params.mixerId);
+  res.json({ success: result });
+});
+
+app.post('/api/mixers/:mixerId/stop', (req, res) => {
+  const result = mixerManager.stopMixing(req.params.mixerId);
+  res.json({ success: result });
+});
+
+app.post('/api/mixers/:mixerId/masterVolume', (req, res) => {
+  const { volume } = req.body;
+  if (volume === undefined) {
+    return res.status(400).json({ error: 'Volume is required' });
+  }
+  const result = mixerManager.setMasterVolume(req.params.mixerId, volume);
+  const mixer = mixerManager.getMixer(req.params.mixerId);
+  res.json({ success: result, volume: mixer?.masterVolume });
+});
+
+app.post('/api/mixers/:mixerId/inputs/:channelId/volume', (req, res) => {
+  const { volume } = req.body;
+  if (volume === undefined) {
+    return res.status(400).json({ error: 'Volume is required' });
+  }
+  const result = mixerManager.setInputVolume(req.params.mixerId, req.params.channelId, volume);
+  res.json({ success: result });
+});
+
+app.post('/api/mixers/:mixerId/inputs/:channelId/pan', (req, res) => {
+  const { pan } = req.body;
+  if (pan === undefined) {
+    return res.status(400).json({ error: 'Pan is required' });
+  }
+  const result = mixerManager.setInputPan(req.params.mixerId, req.params.channelId, pan);
+  res.json({ success: result });
+});
+
+app.post('/api/mixers/:mixerId/inputs/:channelId/mute', (req, res) => {
+  const { muted } = req.body;
+  const result = mixerManager.setInputMuted(req.params.mixerId, req.params.channelId, muted);
+  res.json({ success: result });
+});
+
+app.post('/api/mixers/:mixerId/inputs/:channelId/enable', (req, res) => {
+  const { enabled } = req.body;
+  const result = mixerManager.setInputEnabled(req.params.mixerId, req.params.channelId, enabled);
+  res.json({ success: result });
+});
+
+app.post('/api/mixers/:mixerId/record/start', (req, res) => {
+  const result = mixerManager.startRecording(req.params.mixerId);
+  const mixer = mixerManager.getMixer(req.params.mixerId);
+  res.json({ success: result, filePath: mixer?.recordFilePath });
+});
+
+app.post('/api/mixers/:mixerId/record/stop', (req, res) => {
+  const result = mixerManager.stopRecording(req.params.mixerId);
+  const mixer = mixerManager.getMixer(req.params.mixerId);
+  res.json({ success: result, filePath: mixer?.recordFilePath });
+});
+
+app.post('/api/mixers', (req, res) => {
+  const { id, name, description, inputChannels } = req.body;
+  if (!id || !name) {
+    return res.status(400).json({ error: 'id and name are required' });
+  }
+  const result = mixerManager.createMixer(id, name, description || '', inputChannels || []);
+  if (!result) {
+    return res.status(400).json({ error: 'Mixer already exists' });
+  }
+  res.json({ success: true, mixer: result });
+});
+
+app.delete('/api/mixers/:mixerId', (req, res) => {
+  const result = mixerManager.deleteMixer(req.params.mixerId);
+  if (!result) {
+    return res.status(400).json({ error: 'Cannot delete mixer' });
+  }
+  res.json({ success: true });
+});
+
+app.post('/api/mixers/:mixerId/inputs', (req, res) => {
+  const { channelId } = req.body;
+  if (!channelId) {
+    return res.status(400).json({ error: 'channelId is required' });
+  }
+  const result = mixerManager.addMixerInput(req.params.mixerId, channelId);
+  if (!result) {
+    return res.status(400).json({ error: 'Cannot add input' });
+  }
+  res.json({ success: true });
+});
+
+app.delete('/api/mixers/:mixerId/inputs/:channelId', (req, res) => {
+  const result = mixerManager.removeMixerInput(req.params.mixerId, req.params.channelId);
+  if (!result) {
+    return res.status(400).json({ error: 'Cannot remove input' });
+  }
+  res.json({ success: true });
+});
+
 app.get('/api/channels/:channelId', (req, res) => {
+  if (mixerManager.isVirtualChannel(req.params.channelId)) {
+    const vChannel = mixerManager.getVirtualChannel(req.params.channelId);
+    if (!vChannel) {
+      return res.status(404).json({ error: 'Channel not found' });
+    }
+    return res.json(vChannel);
+  }
+
   const channel = channelManager.getChannel(req.params.channelId);
   if (!channel) {
     return res.status(404).json({ error: 'Channel not found' });
@@ -144,9 +270,48 @@ app.post('/api/channels/:channelId/volume', (req, res) => {
 
 app.get('/stream/:channelId', (req, res) => {
   const channelId = req.params.channelId;
-  const channel = channelManager.getChannel(channelId);
   const userId = req.listenerUid;
 
+  if (mixerManager.isVirtualChannel(channelId)) {
+    res.setHeader('Content-Type', 'audio/mpeg');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Accept-Ranges', 'none');
+    res.status(200);
+
+    const result = mixerManager.createClientStream(channelId, userId);
+    if (!result) {
+      res.end();
+      return;
+    }
+
+    const { stream: clientStream, connectionId } = result;
+    res.setHeader('X-Connection-Id', connectionId);
+
+    clientStream.pipe(res);
+
+    let cleaned = false;
+    const cleanup = () => {
+      if (cleaned) return;
+      cleaned = true;
+      try {
+        clientStream.unpipe(res);
+      } catch (e) {}
+      try {
+        clientStream.destroy();
+      } catch (e) {}
+    };
+
+    req.on('close', cleanup);
+    req.on('aborted', cleanup);
+    res.on('close', cleanup);
+    res.on('finish', cleanup);
+    clientStream.on('error', cleanup);
+    return;
+  }
+
+  const channel = channelManager.getChannel(channelId);
   if (!channel) {
     return res.status(404).send('Channel not found');
   }
@@ -246,13 +411,16 @@ app.listen(config.port, () => {
     console.log(`  [${ch.name}] - /stream/${ch.id}`);
     console.log(`    目录: ${path.join(config.musicBaseDir, ch.dir)}`);
   }
+  console.log(`  [主混音台] - /stream/mixer-main (虚拟混音频道)`);
   console.log(`\n前端页面: http://localhost:${config.port}/`);
   console.log(`DJ 控制台: http://localhost:${config.port}/dj.html`);
+  console.log(`混音台: http://localhost:${config.port}/mixer.html`);
   console.log(`\n提示: 请确保系统已安装 ffmpeg`);
 });
 
 process.on('SIGINT', () => {
   console.log('\n正在关闭服务...');
+  mixerManager.shutdown();
   audioStreamer.shutdown();
   wsServer.stop();
   process.exit(0);

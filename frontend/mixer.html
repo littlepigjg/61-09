@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>内网音频广播 - 专业混音台</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="container mixer-container">
+    <header class="header">
+      <h1>🎚️ 专业音频混音台</h1>
+      <nav>
+        <a href="index.html" class="nav-link">播放器</a>
+        <a href="dj.html" class="nav-link">DJ 控制台</a>
+        <a href="mixer.html" class="nav-link active">混音台</a>
+      </nav>
+    </header>
+
+    <main class="mixer-main">
+      <section class="mixer-sidebar">
+        <div class="mixer-list-card">
+          <h3>混音频道</h3>
+          <div class="mixer-list" id="mixerList">
+          </div>
+          <button class="btn-add-mixer" id="addMixerBtn">+ 新建混音台</button>
+        </div>
+
+        <div class="available-channels-card">
+          <h3>可用频道</h3>
+          <div class="channel-list" id="availableChannels">
+          </div>
+          <p class="hint-text">拖拽或点击添加到混音台</p>
+        </div>
+      </section>
+
+      <section class="mixer-content">
+        <div class="output-card master-output-card">
+          <div class="output-header">
+            <div class="mixer-title-section">
+              <div class="mixer-icon">🎛️</div>
+              <div>
+                <h2 id="mixerName">主混音台</h2>
+                <p class="mixer-desc" id="mixerDesc">跨频道音频混音输出</p>
+              </div>
+            </div>
+            <div class="output-status">
+              <span class="status-badge" id="mixerStatus">未启动</span>
+              <span class="record-badge" id="recordStatus" style="display:none;">● 录制中</span>
+            </div>
+          </div>
+
+          <div class="output-controls">
+            <button id="startMixBtn" class="control-btn btn-green">▶ 启动混音</button>
+            <button id="stopMixBtn" class="control-btn btn-red" disabled>■ 停止混音</button>
+            <button id="togglePreviewBtn" class="control-btn btn-blue">👂 监听预览</button>
+            <button id="startRecordBtn" class="control-btn btn-orange" disabled>● 开始录制</button>
+            <button id="stopRecordBtn" class="control-btn btn-red" disabled>■ 停止录制</button>
+            <button id="deleteMixerBtn" class="control-btn btn-gray" style="display:none;">🗑️ 删除</button>
+          </div>
+
+          <div class="master-section">
+            <div class="master-volume-container">
+              <div class="master-fader">
+                <div class="fader-track">
+                  <div class="fader-fill" id="masterFaderFill"></div>
+                  <input type="range" id="masterVolume" min="0" max="100" value="100" class="fader-input vertical" orient="vertical">
+                </div>
+                <span class="fader-label">主音量</span>
+                <span class="fader-value" id="masterVolumeValue">100%</span>
+              </div>
+            </div>
+
+            <div class="master-meters">
+              <div class="stereo-meter large">
+                <div class="meter-channel">
+                  <span class="meter-label">L</span>
+                  <div class="meter-bar vertical">
+                    <div class="meter-fill meter-left" id="masterMeterLeft" style="height: 0%"></div>
+                    <div class="meter-ticks">
+                      <span class="tick" style="top: 0%">0</span>
+                      <span class="tick" style="top: 25%">-6</span>
+                      <span class="tick" style="top: 50%">-12</span>
+                      <span class="tick" style="top: 75%">-24</span>
+                      <span class="tick" style="top: 100%">-∞</span>
+                    </div>
+                  </div>
+                  <span class="meter-db" id="masterDbLeft">-∞</span>
+                </div>
+                <div class="meter-channel">
+                  <span class="meter-label">R</span>
+                  <div class="meter-bar vertical">
+                    <div class="meter-fill meter-right" id="masterMeterRight" style="height: 0%"></div>
+                    <div class="meter-ticks">
+                      <span class="tick" style="top: 0%">0</span>
+                      <span class="tick" style="top: 25%">-6</span>
+                      <span class="tick" style="top: 50%">-12</span>
+                      <span class="tick" style="top: 75%">-24</span>
+                      <span class="tick" style="top: 100%">-∞</span>
+                    </div>
+                  </div>
+                  <span class="meter-db" id="masterDbRight">-∞</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="mixer-stats">
+              <div class="stat-box">
+                <span class="stat-icon">👥</span>
+                <span class="stat-label">在线收听</span>
+                <span class="stat-value large" id="mixerListenerCount">0</span>
+              </div>
+              <div class="stat-box">
+                <span class="stat-icon">🎵</span>
+                <span class="stat-label">输入通道</span>
+                <span class="stat-value large" id="inputChannelCount">0</span>
+              </div>
+              <div class="stat-box">
+                <span class="stat-icon">⏱️</span>
+                <span class="stat-label">混音时长</span>
+                <span class="stat-value large" id="mixDuration">00:00</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="input-channels-section">
+          <div class="section-header">
+            <h2>输入通道控制</h2>
+            <div class="channel-actions">
+              <button class="btn-small" id="addChannelBtn">+ 添加通道</button>
+              <button class="btn-small btn-secondary" id="resetAllBtn">↺ 全部重置</button>
+            </div>
+          </div>
+          <div class="mixer-channels" id="mixerChannels">
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="modal" id="addMixerModal" style="display:none;">
+    <div class="modal-content">
+      <h3>新建混音台</h3>
+      <div class="form-group">
+        <label>混音台ID</label>
+        <input type="text" id="newMixerId" placeholder="例如: mixer-2">
+      </div>
+      <div class="form-group">
+        <label>名称</label>
+        <input type="text" id="newMixerName" placeholder="混音台名称">
+      </div>
+      <div class="form-group">
+        <label>描述</label>
+        <input type="text" id="newMixerDesc" placeholder="混音台描述（可选）">
+      </div>
+      <div class="form-group">
+        <label>选择输入频道</label>
+        <div class="checkbox-group" id="newMixerChannels">
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-cancel" id="cancelAddMixer">取消</button>
+        <button class="btn-confirm" id="confirmAddMixer">创建</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="addChannelModal" style="display:none;">
+    <div class="modal-content">
+      <h3>添加输入通道</h3>
+      <div class="channel-select-list" id="channelSelectList">
+      </div>
+      <div class="modal-actions">
+        <button class="btn-cancel" id="cancelAddChannel">取消</button>
+      </div>
+    </div>
+  </div>
+
+  <audio id="previewAudio" style="display:none;"></audio>
+
+  <script src="js/config.js"></script>
+  <script src="js/mixer.js"></script>
+</body>
+</html>
